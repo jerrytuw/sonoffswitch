@@ -1,3 +1,18 @@
+/*
+   Simple ESP32/Arduino sketch to switch on/off channels of 4CH Sonoff switches
+   - looks up addresses of specific devices with mDNS @start
+   - WIFI credentials and device IDs and keys have to be configured in devices.h
+   
+   Essential function:
+   int doswitch (int deviceNo, int channel, int function)
+      deviceNo: 0...nummber of devices in devices.h
+      channel: 1...4
+      function: 0 for off, 1 for on
+      returns http response code
+
+   For testing simple two letter input commands can be entered.
+*/
+
 #include <string.h>
 #include <stdio.h>
 #include <ESPmDNS.h>
@@ -11,24 +26,19 @@
 #define AES_blkSize 16
 #define TEST false // set to true for test data and more debug output
 
-unsigned long device;
+IPAddress *ipaddresses; // for collection of actual IP addresses on LAN
 
 #include <HTTPClient.h>
+HTTPClient http; // for sending commands as POST request
 
-//Your Domain name with URL path or IP address with path
-const char* serverName = "http://192.168.0.113:8081/zeroconf/switches";
-String servicename = ":8081/zeroconf/switches";
-HTTPClient http;
-
+/*
+   input for testing
+*/
 int charCount; // status of input reading
 int incomingByte; // for incoming serial data
 char command[3]; // the command buffer
 
 unsigned long lastTime = 0;
-
-/*
-  For Encryption time: 1802.40us (9.09 MB/s) at 16kB blocks.
-*/
 
 #if TEST
 static inline int32_t _getCycleCount(void) {
@@ -42,15 +52,6 @@ char plaintext[256];
 char encrypted[256];
 unsigned char output[256];
 
-/*  memset( iv, 0, sizeof( iv ) );
-
-  //Right now, I am using a key of all zeroes. This should change. You should fill the key
-  //out with actual data.
-  memset( keyhash, 0, sizeof( keyhash ) );
-
-  memset( plaintext, 0, sizeof( plaintext ) );
-  strcpy( plaintext, "Hello, world, how are you doing today?" );
-*/
 /*char * toDecode = "zJBk79hXPpG4LB7eoQbAAw==";
   size_t outputLength;
   unsigned char * decoded = base64_decode((const unsigned char *)toDecode, strlen(toDecode), &outputLength);
@@ -107,7 +108,7 @@ String encrypt(char* strDeviceId, char* strDeviceKey, char* strPlainText)
   uint8_t iv[16]; //initialisation vector
   uint8_t ivrandom[16]; //random source
   char *devicekey = strDeviceKey;
-  uint8_t keyhash[16 + 1];
+  uint8_t keyhash[16];
   size_t outputLength;
   String message;
 #if TEST
@@ -115,7 +116,7 @@ String encrypt(char* strDeviceId, char* strDeviceKey, char* strPlainText)
   devicekey = "ABCDEFGHIJKLMNOPABCDEFGHIJKLMNOP";
 #endif
 
-  for (int i = 0; i < 16; i++) ivrandom[i] = random(256) & 0xff; //fill with random bytes
+  for (int i = 0; i < 16; i++) ivrandom[i] = random(256) & 0xff; //fill with 16 random bytes
   /*
      build the encryption key from the device key
   */
@@ -126,7 +127,7 @@ String encrypt(char* strDeviceId, char* strDeviceKey, char* strPlainText)
   nonce_md5.getBytes(keyhash);
   MD5Builder _md5;
 
-  keyhash[16] = 0;
+  //keyhash[16] = 0;
 
 #if TEST
   memcpy(keyhash, "ABCDEFGHIJKLMNOPABCDEFGHIJKLMNOP", 16); // to look for defined output
@@ -202,12 +203,12 @@ String encrypt(char* strDeviceId, char* strDeviceKey, char* strPlainText)
   return message;
 }
 
-int doswitch (int channel, int function)
+int doswitch (int deviceNo, int channel, int function)
 {
   String m;
   char command[50];
-
-  if ((channel < 1) || (channel > 4) || (function < 0) || (function > 1)) return -1;
+  String url;
+  if ((deviceNo >= sizeof(devices) / sizeof(devices[0])) || (channel < 1) || (channel > 4) || (function < 0) || (function > 1)) return -1;
 
   // Specify content-type header
   http.addHeader("Content-Type", "application/json");
@@ -215,13 +216,15 @@ int doswitch (int channel, int function)
   http.addHeader("Accept", "*/*");
 
   // Your Domain name with URL path or IP address with path
-  http.begin("http://192.168.0.113:8081/zeroconf/switches");
+  url = "http://" + ipaddresses[deviceNo].toString() + ":8081/zeroconf/switches";
+  http.begin(url);
 #if TEST
   int httpResponseCode = http.POST(R"({'sequence': '1639593148516', 'deviceid': '1000f4d171', 'selfApikey': '123', 'data': {'switches': [{'switch': 'off', 'outlet': 0}, {'switch': 'off', 'outlet': 3}]}})");
 #else
   snprintf(command, 50, "{\"switches\": [{\"switch\": \"%s\", \"outlet\": %d}]}", function ? "on" : "off", channel - 1);
   if (TEST) Serial.println(command);
-  m = encrypt("1000f4d171", "88d861d6-f5f4-4c4d-84ff-4a173db5901b", command);
+  //  m = encrypt("1000f4d171", "88d861d6-f5f4-4c4d-84ff-4a173db5901b", command);
+  m = encrypt(devices[deviceNo].id, devices[deviceNo].key, command);
 
   int httpResponseCode = http.POST(m.c_str());
 #endif
@@ -232,6 +235,7 @@ int doswitch (int channel, int function)
 
   // Free resources
   http.end();
+  return httpResponseCode;
 }
 
 void loop() {
@@ -240,12 +244,13 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (checkCommand()) {
       Serial.printf("*%s*\n", command);
-      doswitch (command[0] - '0', command[1] - '0');
+      doswitch (1, command[0] - '0', command[1] - '0');
     }
   }
 }
 
 void setup() {
+  char device[10 + 1];
   Serial.begin(115200);
   command[2] = 0;
   charCount = -1;
@@ -264,29 +269,48 @@ void setup() {
   }
 
   int nrOfServices = MDNS.queryService("ewelink", "tcp");
-
-  if (nrOfServices == 0) {
-    Serial.println("No services were found.");
-  }
-  else {
-    Serial.print("Number of services found: ");
-    Serial.println(nrOfServices);
-
-    for (int i = 0; i < nrOfServices; i = i + 1) {
-      Serial.print("Hostname: ");
-      Serial.println(MDNS.hostname(i));
-      Serial.print("IP address: ");
-      Serial.print(MDNS.IP(i));
-      Serial.print(" Port: ");
-      Serial.println(MDNS.port(i));
-      Serial.println("---------------");
-      if (sscanf(MDNS.hostname(i).c_str(), "eWeLink_1000%lx", &device) == 1)
-      {
-        Serial.printf("found device %d 1000%lx @%s\n", i + 1, device, MDNS.IP(i).toString().c_str());
-        //for(int j =0; j < MDNS.numTxt(i); j++)
-        //Serial.printf("val=",MDNS.txt(i, j));
-      }
+  try
+  {
+    if (nrOfServices == 0) {
+      Serial.println("No services were found.");
     }
-    Serial.println();
+    else {
+      Serial.print("Number of services found: ");
+      Serial.println(nrOfServices);
+      ipaddresses = new(IPAddress[nrOfServices]);
+
+      for (int i = 0; i < nrOfServices; i = i + 1) {
+#if TEST
+        Serial.print("Hostname: ");
+        Serial.println(MDNS.hostname(i));
+        Serial.print("IP address: ");
+        Serial.print(MDNS.IP(i));
+        Serial.print(" Port: ");
+        Serial.println(MDNS.port(i));
+        Serial.println("---------------");
+#endif
+        if (sscanf(MDNS.hostname(i).c_str(), "eWeLink_%10s", &device) == 1)
+        {
+          Serial.printf("found device %d %s @%s\n", i + 1, device, MDNS.IP(i).toString().c_str());
+          //for(int j =0; j < MDNS.numTxt(i); j++)
+          //Serial.printf("val=",MDNS.txt(i, j));
+          for (int j = 0; j < sizeof(devices) / sizeof(devices[0]); j++)
+          {
+            if (!strcmp(device, devices[j].id))
+            {
+              ipaddresses[j] = MDNS.IP(i);
+#if TEST
+              Serial.print(MDNS.IP(i)); Serial.print("="); Serial.print(ipaddresses[j]); Serial.println();
+#endif
+            }
+          }
+        }
+      }
+      Serial.println();
+    }
+  }
+  catch (...)
+  {
+    Serial.println("Error: mDNS address lookup failed");
   }
 }
