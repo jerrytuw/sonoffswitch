@@ -11,7 +11,7 @@ In the devices.h file the WIFI credentials and pairs of deviceId and deviceKey a
  
    Essential function:
    int doswitch (int deviceNo, int channel, int function)
-      deviceNo: 0...nummber of devices in devices.h
+      deviceNo: 0...number of devices in devices.h
       channel: 1...4
       function: 0 for off, 1 for on
-      returns http response code
+      -> returns http response code
