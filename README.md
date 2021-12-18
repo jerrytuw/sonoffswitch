@@ -5,6 +5,13 @@ I bought a 4CH switch with nice housing @ https://www.amazon.de/gp/product/B08RS
 
 As I needed a standalone solution for my project I extracted the essential information from the Home Assistant Sonoff plugin (https://github.com/AlexxIT/SonoffLAN) and converted it into C for the ESP32.
 
-The sketch first searches for devices via mDNs (to find IP addresses), then takes input in the form of 2 characters: 1st is channel 1-4, second is 0 or 1 fo rthe channel state (send with enter).
+The sketch first searches for devices via mDNs (to find IP addresses), then takes input in the form of 2 characters: 1st is channel 1-4, second is 0 or 1 for the channel state (send with enter).
 
-In the devices.h file the WIFI credentials and pairs of deviceId and deviceKey are lloked up. Note: see https://github.com/AlexxIT/SonoffLAN#getting-devicekey-manually on how to get the device info.
+In the devices.h file the WIFI credentials and pairs of deviceId and deviceKey are looked up. Note: see https://github.com/AlexxIT/SonoffLAN#getting-devicekey-manually on how to get the device info.
+ 
+   Essential function:
+   int doswitch (int deviceNo, int channel, int function)
+      deviceNo: 0...nummber of devices in devices.h
+      channel: 1...4
+      function: 0 for off, 1 for on
+      returns http response code
