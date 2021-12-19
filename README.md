@@ -15,3 +15,5 @@ In the devices.h file the WIFI credentials and pairs of deviceId and deviceKey a
       channel: 1...4
       function: 0 for off, 1 for on
       -> returns http response code
+
+Provided as is.
