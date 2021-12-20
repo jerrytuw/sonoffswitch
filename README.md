@@ -7,7 +7,7 @@ As I needed a standalone solution for my project I extracted the essential infor
 
 The sketch first searches for devices via mDNs (to find IP addresses), then takes input in the form of 2 characters: 1st is channel 1-4, second is 0 or 1 for the channel state (send with enter).
 
-In the devices.h file the WIFI credentials and pairs of deviceId and deviceKey are looked up. Note: see https://github.com/AlexxIT/SonoffLAN#getting-devicekey-manually on how to get the device info.
+In the devices.h file the WIFI credentials and pairs of deviceId and deviceKey are looked up. Note: see https://github.com/AlexxIT/SonoffLAN#getting-devicekey-manually on how to get the device info. Or use https://github.com/Philiptpp/sonoff_registered_devices with your eWeLink credentials.
  
    Essential function:
    int doswitch (int deviceNo, int channel, int function)
